@@ -9,7 +9,7 @@ Small fixture for observing native GitHub check selection and concurrency. Jobs 
 - `fixture/mode`: `pass` or `fail`.
 - `branch-protection.json`: required check `Validate fixture` bound to GitHub Actions (app_id 15368), strict, admins enforced, PR required with 0 approvals.
 
-Control files you add on branches: `fixture/hold-seconds`, `fixture/route-fault`, `fixture/require-base-marker`, `fixture/base-a-marker`.
+Control files you add on branches: `fixture/hold-seconds`, `fixture/route-hold-seconds` (step `Hold route` sleeps 0-30s before the router decides), `fixture/route-fault`, `fixture/require-base-marker`, `fixture/base-a-marker`.
 
 ## Setup
 
