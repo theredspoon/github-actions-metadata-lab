@@ -31,6 +31,22 @@ jobs:
       decision: ${{ steps.route.outputs.decision }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - name: Integrate base
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: sh fixture/integrate.sh
+      - name: Hold route
+        run: |
+          set -eu
+          hold=$(cat fixture/route-hold-seconds 2>/dev/null || echo 0)
+          case "$hold" in ''|*[!0-9]*) hold=0 ;; esac
+          [ "$hold" -le 30 ] || hold=30
+          echo "holding ${hold}s before routing"
+          sleep "$hold"
       - id: route
         env:
           EVENT_ACTION: ${{ github.event.action }}
@@ -57,7 +73,9 @@ jobs:
       || (needs.route.result == 'success' && needs.route.outputs.decision == 'meta') && 'Metadata skip'
       || 'Fallback validation' }}
     needs: route
-    if: always()
+    # !cancelled() still runs after a route failure (fallback) or a skipped route
+    # (dispatch), but a cancelled workflow does not start a new validate job.
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 2
     env:
@@ -72,6 +90,15 @@ jobs:
         run: echo "title/body edit, no code validation"
       - uses: actions/checkout@v4
         if: env.ROLE != 'meta'
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - name: Integrate base
+        if: env.ROLE != 'meta'
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: sh fixture/integrate.sh
       - name: Hold
         if: env.ROLE == 'required'
         env:

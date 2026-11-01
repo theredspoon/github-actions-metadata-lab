@@ -6,10 +6,11 @@ Small fixture for observing native GitHub check selection and concurrency. Jobs 
 
 - `.github/workflows/fixture.yml`: job `Route fixture event`, then one `validate` job whose check name depends on the route: `Validate fixture` (dispatch or routed code event, steps `Hold` then `Validate`), `Metadata skip` (title/body edit, no validation), or `Fallback validation` (router failed, runs the real validator). `actions/checkout@v4` is a tag, not an immutable SHA pin.
 - `fixture/validate.sh`: logs checkout commit and parents, fails if `fixture/mode` is not `pass` or if `fixture/require-base-marker` exists without `fixture/base-a-marker`.
+- `fixture/integrate.sh`: runs after each checkout of the event head SHA (`fetch-depth: 0`). It checks `HEAD` equals `HEAD_SHA`, then runs `git merge --no-commit --no-ff` of the event `BASE_SHA` and logs head, base, and the integrated tree. It does not use `refs/pull/<n>/merge`. Conflicts fail the step. Dispatch has no base, so the merge is skipped. Nothing is committed or pushed.
 - `fixture/mode`: `pass` or `fail`.
 - `branch-protection.json`: required check `Validate fixture` bound to GitHub Actions (app_id 15368), strict, admins enforced, PR required with 0 approvals.
 
-Control files you add on branches: `fixture/hold-seconds`, `fixture/route-fault`, `fixture/require-base-marker`, `fixture/base-a-marker`.
+Control files you add on branches: `fixture/hold-seconds`, `fixture/route-hold-seconds` (step `Hold route` sleeps 0-30s before the router decides), `fixture/route-fault`, `fixture/require-base-marker`, `fixture/base-a-marker`.
 
 ## Setup
 
