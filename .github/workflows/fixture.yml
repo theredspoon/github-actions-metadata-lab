@@ -1,0 +1,91 @@
+name: Fixture
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+  workflow_dispatch:
+    inputs:
+      hold_seconds:
+        description: "Seconds the Hold step sleeps before validation (clamped 0-30)"
+        required: false
+        default: "25"
+
+permissions:
+  contents: read
+
+# Title/body-only edits use their own group so they never cancel a code run.
+# Code pushes and base retargets share a group, so a newer one cancels the older run.
+concurrency:
+  group: >-
+    fixture-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{
+    (github.event.action == 'edited' && !github.event.changes.base) && 'meta' || 'code' }}
+  cancel-in-progress: true
+
+jobs:
+  route:
+    name: Route fixture event
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      decision: ${{ steps.route.outputs.decision }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: route
+        env:
+          EVENT_ACTION: ${{ github.event.action }}
+          BASE_CHANGED: ${{ github.event.changes.base != null }}
+        run: |
+          set -eu
+          if [ -f fixture/route-fault ]; then
+            echo "route-fault file present: router exits 1 (injected fault)"
+            exit 1
+          fi
+          if [ "$EVENT_ACTION" = "edited" ] && [ "$BASE_CHANGED" != "true" ]; then
+            decision=meta
+          else
+            decision=code
+          fi
+          echo "decision=$decision" | tee -a "$GITHUB_OUTPUT"
+
+  # One job, three check names. Only a manual dispatch or a routed code event
+  # posts the required name. A router failure posts only "Fallback validation".
+  # A metadata edit posts only "Metadata skip".
+  validate:
+    name: >-
+      ${{ (github.event_name == 'workflow_dispatch' || (needs.route.result == 'success' && needs.route.outputs.decision == 'code')) && 'Validate fixture'
+      || (needs.route.result == 'success' && needs.route.outputs.decision == 'meta') && 'Metadata skip'
+      || 'Fallback validation' }}
+    needs: route
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    env:
+      ROLE: >-
+        ${{ (github.event_name == 'workflow_dispatch' || (needs.route.result == 'success' && needs.route.outputs.decision == 'code')) && 'required'
+        || (needs.route.result == 'success' && needs.route.outputs.decision == 'meta') && 'meta'
+        || 'fallback' }}
+      ROUTE_RESULT: ${{ needs.route.result }}
+    steps:
+      - name: Metadata skip
+        if: env.ROLE == 'meta'
+        run: echo "title/body edit, no code validation"
+      - uses: actions/checkout@v4
+        if: env.ROLE != 'meta'
+      - name: Hold
+        if: env.ROLE == 'required'
+        env:
+          INPUT_HOLD: ${{ inputs.hold_seconds }}
+        run: |
+          set -eu
+          hold=${INPUT_HOLD:-$(cat fixture/hold-seconds 2>/dev/null || echo 0)}
+          case "$hold" in ''|*[!0-9]*) hold=0 ;; esac
+          [ "$hold" -le 30 ] || hold=30
+          echo "holding ${hold}s before validation"
+          sleep "$hold"
+      - name: Validate
+        if: env.ROLE != 'meta'
+        run: |
+          set -eu
+          echo "role=$ROLE route=$ROUTE_RESULT"
+          sh fixture/validate.sh
