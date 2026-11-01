@@ -2,6 +2,7 @@
 # Usage: validate.sh
 set -eu
 echo "checkout: $(git log -1 --format='%H parents=%P')"
+sleep 90
 mode=$(cat fixture/mode 2>/dev/null || echo pass)
 if [ -f fixture/require-base-marker ] && [ ! -f fixture/base-a-marker ]; then
   echo "fixture/require-base-marker present but fixture/base-a-marker absent in merge checkout"
